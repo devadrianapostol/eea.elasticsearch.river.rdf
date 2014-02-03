@@ -96,6 +96,11 @@ public class RDFRiver extends AbstractRiverComponent implements River {
 					.rdfWhiteMap((
 								Map<String,Object>)eeaSettings.get("whiteMap"));
 			}
+			if(eeaSettings.containsKey("multiList")) {
+				harvester
+					.rdfMultiList((
+							List<String>)eeaSettings.get("multiList"));
+			}
 		}
 		else {
 			throw new	ElasticSearchIllegalArgumentException(

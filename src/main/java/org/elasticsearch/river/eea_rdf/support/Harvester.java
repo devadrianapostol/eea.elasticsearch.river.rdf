@@ -66,6 +66,7 @@ public class Harvester implements Runnable {
 	private Boolean addLanguage = false;
 	private String language;
 	private List<String> uriDescriptionList;
+	private List<String> multiList;
 	private Boolean toDescribeURIs = false;
 	private Boolean addUriForResource;
 	private Boolean hasBlackMap = false;
@@ -183,6 +184,13 @@ public class Harvester implements Runnable {
 	public Harvester rdfAddUriForResource(Boolean rdfAddUriForResource) {
 		this.addUriForResource = rdfAddUriForResource;
 		return this;
+	}
+	
+	public Harvester rdfMultiList(List<String> list) {
+		if(!list.isEmpty()) {
+			multiList = new ArrayList<String>(list);
+		}
+		return this;		
 	}
 
 	public Harvester client(Client client) {
@@ -366,8 +374,8 @@ public class Harvester implements Runnable {
 
 		logger.info(
 				"Starting RDF harvester: endpoint [{}], query [{}]," +
-				"URLs [{}], index name [{}], typeName {}",
-				rdfEndpoint, rdfQuery, rdfUrls, indexName, typeName);
+				"URLs [{}], index name [{}], typeName [{}], multilist {}",
+				rdfEndpoint, rdfQuery, rdfUrls, indexName, typeName, multiList);
 
 		while (true) {
 			if(this.closed){
@@ -394,7 +402,12 @@ public class Harvester implements Runnable {
 		}
 	}
 
-
+	/**
+	 * Queries the {@link #rdfEndpoint(String)} with the {@link #rdfQuery(String)} 
+	 * and harvests the results of the query. The query should only return triples, 
+	 * named 's', 'p' and 'o'
+	 * @param qexec a SELECT query
+	 */
 	private void harvestWithSelect(QueryExecution qexec) {
 		Model sparqlModel = ModelFactory.createDefaultModel();
 		Graph graph = sparqlModel.getGraph();
@@ -431,6 +444,11 @@ public class Harvester implements Runnable {
 		addModelToES(sparqlModel, bulkRequest);
 	}
 
+	/**
+	 * Queries the {@link #rdfEndpoint(String)} with the {@link #rdfQuery(String)} 
+	 * and harvests the results of the query. 
+	 * @param qexec a CONSTRUCT query
+	 */
 	private void harvestWithConstruct(QueryExecution qexec) {
 		Model sparqlModel = ModelFactory.createDefaultModel();
 		try {
@@ -444,6 +462,13 @@ public class Harvester implements Runnable {
 		addModelToES(sparqlModel, bulkRequest);
 	}
 
+	/**
+	 * Queries the {@link #rdfEndpoint(String)} with the {@link #rdfQuery(String)} 
+	 * and harvests the results of the query. 
+	 * 
+	 * Observation: At this time only the CONSTRUCT and SELECT queries are 
+	 * supported
+	 */
 	private void harvestFromEndpoint() {
 		try {
 			Query query = QueryFactory.create(rdfQuery);
@@ -467,6 +492,9 @@ public class Harvester implements Runnable {
 		}
 	}
 
+	/**
+	 * Harvests all the triplets from each URI in the @rdfUrls list 
+	 */
 	private void harvestFromDumps() {
 		for(String url:rdfUrls) {
 			if(url.isEmpty()) continue;
@@ -508,8 +536,7 @@ public class Harvester implements Runnable {
 		while(rsiter.hasNext()){
 
 			Resource rs = rsiter.nextResource();
-			Map<String, ArrayList<String>> jsonMap = new HashMap<String,
-				ArrayList<String>>();
+			Map<String, ArrayList<String>> jsonMap = new HashMap<String, ArrayList<String>>();
 			ArrayList<String> results = new ArrayList<String>();
 			if(addUriForResource) {
 				results.add("\"" + rs.toString() + "\"");
@@ -548,11 +575,16 @@ public class Harvester implements Runnable {
 								blackMap.get(prop.toString()).contains(shortValue))) {
 								continue;
 						} else {
-							if(willNormalizeObj &&
-								normalizeObj.containsKey(shortValue)) {
-								results.add("\"" +
-									normalizeObj.get(shortValue) + "\"");
+							if(willNormalizeObj && normalizeObj.containsKey(shortValue)) {
+								String myValue = "\"" + normalizeObj.get(shortValue) + "\"";
+								if(multiList.contains(prop.toString())){
+									results.add(valueToMulti(myValue));
+								} else 
+									results.add(myValue);
 							} else {
+								if(multiList.contains(prop.toString())){
+									results.add(valueToMulti(currValue));
+								} else 
 									results.add(currValue);
 							}
 						}
@@ -572,7 +604,7 @@ public class Harvester implements Runnable {
 							}
 						} else {
 							property = prop.toString();
-							jsonMap.put(property,results);
+							jsonMap.put(property, results);
 						}
 					}
 				}
@@ -590,6 +622,31 @@ public class Harvester implements Runnable {
 				.setSource(mapToString(jsonMap)));
 			BulkResponse bulkResponse = bulkRequest.execute().actionGet();
 		}
+	}
+	
+	@Deprecated
+	private Object getValue(List<String> results, String property) {
+		if(multiList.contains(property)) {
+			ArrayList<Object> sol = new ArrayList<Object>();
+			for(String result : results) {
+				HashMap<String, Object> multiSol = new HashMap<String, Object>();
+				multiSol.put("type", "multi_field");
+				HashMap<String, String>value = new HashMap<String, String>();
+				value.put("sort", result);
+				value.put("index", result);
+				multiSol.put("fields", value);
+				sol.add(multiSol);
+			}
+			return sol;
+		} else {
+			return results;
+		}
+	}
+	
+	private String valueToMulti(String value) {
+		String result = "{\"type\": \"multi_field\", \"fields\": {\"sort\": ";
+		result += value + ",\"text\": " + value +"}}";
+		return result;
 	}
 
 	/**
@@ -719,4 +776,5 @@ public class Harvester implements Runnable {
 		}
 		return uri;
 	}
+
 }
