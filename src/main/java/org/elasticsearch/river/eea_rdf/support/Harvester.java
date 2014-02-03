@@ -521,6 +521,7 @@ public class Harvester implements Runnable {
 
 			for(Property prop: properties) {
 				NodeIterator niter = model.listObjectsOfProperty(rs,prop);
+				String property = prop.toString();
 				if(niter.hasNext()) {
 					results = new ArrayList<String>();
 					String lang = "";
@@ -539,20 +540,20 @@ public class Harvester implements Runnable {
 						}
 						String shortValue = currValue.substring(1,currValue.length() - 1);
 
-						if((hasWhiteMap && whiteMap.containsKey(prop.toString()) &&
-								!whiteMap.get(prop.toString()).contains(shortValue)) ||
-							 (hasBlackMap && blackMap.containsKey(prop.toString()) &&
-								blackMap.get(prop.toString()).contains(shortValue))) {
+						if((hasWhiteMap && whiteMap.containsKey(property) &&
+								!whiteMap.get(property).contains(shortValue)) ||
+							 (hasBlackMap && blackMap.containsKey(property) &&
+								blackMap.get(property).contains(shortValue))) {
 								continue;
 						} else {
 							if(willNormalizeObj && normalizeObj.containsKey(shortValue)) {
 								String myValue = "\"" + normalizeObj.get(shortValue) + "\"";
-								if(multiList.contains(prop.toString())){
+								if(multiList.contains(property)){
 									results.add(valueToMulti(myValue));
 								} else 
 									results.add(myValue);
 							} else {
-								if(multiList.contains(prop.toString())){
+								if(multiList.contains(property)){
 									results.add(valueToMulti(currValue));
 								} else 
 									results.add(currValue);
@@ -560,11 +561,9 @@ public class Harvester implements Runnable {
 						}
 					}
 
-					String property;
-
 					if(!results.isEmpty()) {
-						if(willNormalizeProp &&	normalizeProp.containsKey(prop.toString())) {
-							property = normalizeProp.get(prop.toString());
+						if(willNormalizeProp &&	normalizeProp.containsKey(property)) {
+							property = normalizeProp.get(property);
 							if(jsonMap.containsKey(property)) {
 								results.addAll(jsonMap.get(property));
 								jsonMap.put(property, results);
@@ -572,7 +571,6 @@ public class Harvester implements Runnable {
 								jsonMap.put(property, results);
 							}
 						} else {
-							property = prop.toString();
 							jsonMap.put(property, results);
 						}
 					}
@@ -612,7 +610,7 @@ public class Harvester implements Runnable {
 	
 	private String valueToMulti(String value) {
 		String result = "{\"type\": \"multi_field\", \"fields\": {\"sort\": ";
-		result += value + ",\"text\": " + value +"}}";
+		result += value + ",\"index\": " + value +"}}";
 		return result;
 	}
 
