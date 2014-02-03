@@ -345,6 +345,25 @@ replaced with given values no matter of the property whose value they represent.
  }'
  
  
+Multi_field support
++++++++++++++++++++
+
+'multiList' is a list of properties that will become ElasticSearch multi_fields with two fields: 
+'index' and 'sort'. This way a value can be used both in searching and sorting, since the first 
+requires analyzed content and the second content that has not been analyzed. 
+
+::
+
+ curl -XPUT 'localhost:9200/_river/rdf_river/_meta' -d '{
+   "type" : "eeaRDF",
+   "eeaRDF" : {
+      "endpoint" : "http://semantic.eea.europa.eu/sparql",
+      "query" : "CONSTRUCT {?s ?p ?o} WHERE {?s  a <http://www.openlinksw.com/schemas/virtrdf#QuadMapFormat> ; ?p ?o}",
+      "queryType" : "construct",
+      "multiList" : ["http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "http://purl.org/dc/terms/title"]
+   }
+ }'
+ 
 Synchronization with an endpoint
 ================================
 
