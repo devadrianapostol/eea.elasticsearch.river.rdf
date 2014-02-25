@@ -1,13 +1,18 @@
 Changelog
 =========
 
-v1.2 (Unreleased)
+v1.3 (Unreleased)
+-----------------
+* Feature: aded multi-field option available on demand
+  [pasoviul - #18190]
+
+v1.2 (2014-01-23)
 -----------------
 * Feature: added synchronization option for the endpoint
   [pasoviul - #17426]
 * Feature: added whiteMap with values of objects to keep
   [pasoviul - #17459]
-* Bugfix: whitelist only added the first element 
+* Bugfix: whitelist only added the first element
   [pasoviul - #16693]
 * Feature: separated normalization into prop & obj; Added object normalization
   [pasoviul - #17076]
