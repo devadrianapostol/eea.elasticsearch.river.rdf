@@ -1,16 +1,19 @@
 Changelog
 =========
 v1.3 (2014-06-27)
+-----------------
 * Feature: added delete option for when the endpoint does not contain modified resources
   [pasoviul - #18928]
+* Feature: aded multi-field option available on demand
+  [pasoviul - #18190]
 
-v1.2 (23-01-2014)
+v1.2 (2014-01-23)
 -----------------
 * Feature: added synchronization option for the endpoint
   [pasoviul - #17426]
 * Feature: added whiteMap with values of objects to keep
   [pasoviul - #17459]
-* Bugfix: whitelist only added the first element 
+* Bugfix: whitelist only added the first element
   [pasoviul - #16693]
 * Feature: separated normalization into prop & obj; Added object normalization
   [pasoviul - #17076]

@@ -24,6 +24,7 @@ import com.hp.hpl.jena.query.ResultSet;
 import com.hp.hpl.jena.graph.Graph;
 import com.hp.hpl.jena.graph.Triple;
 import com.hp.hpl.jena.graph.NodeFactory;
+import org.apache.jena.riot.RiotException;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -40,6 +41,8 @@ import java.lang.Integer;
 import java.lang.Byte;
 import java.text.SimpleDateFormat;
 import java.io.IOException;
+
+import javax.xml.ws.Endpoint;
 
 /**
  *
@@ -80,30 +83,63 @@ public class Harvester implements Runnable {
 
 	private Boolean closed = false;
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #rdfUrls} parameter 
+	 * @param url - a list of urls
+	 * @return the {@link #Harvester} with the {@link #rdfUrls} parameter set
+	 */
 	public Harvester rdfUrl(String url) {
 		url = url.substring(1, url.length() - 1);
 		rdfUrls = new HashSet<String>(Arrays.asList(url.split(",")));
 		return this;
 	}
-
+	
+	/**
+	 * Sets the {@link #Harvester}'s {@link #rdfEndpoint} parameter
+	 * @param endpoint - new endpoint
+	 * @return the same {@link #Harvester} with the {@link #rdfEndpoint} 
+	 * parameter set
+	 */
 	public Harvester rdfEndpoint(String endpoint) {
 		this.rdfEndpoint = endpoint;
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #rdfQuery} parameter
+	 * @param query - new query
+	 * @return the same {@link #Harvester} with the {@link #rdfQuery} parameter
+	 * set
+	 */
 	public Harvester rdfQuery(String query) {
 		this.rdfQuery = query;
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #rdfQueryType} parameter
+	 * @param queryType - the type of any possible query
+	 * @return the same {@link #Harvester} with the {@link #rdfQueryType} 
+	 * parameter set
+	 */
 	public Harvester rdfQueryType(String queryType) {
 		if(queryType.equals("select"))
 			this.rdfQueryType = 1;
-		else
+		else if (queryType.equals("construct"))
 			this.rdfQueryType = 0;
+		else 
+			this.rdfQueryType = 2;
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #rdfPropList} parameter
+	 * @param list - a list of properties names that are either required in 
+	 * the object description, or undesired, depending on its 
+	 * {@link #rdfListType}
+	 * @return the same {@link #Harvester} with the {@link #rdfPropList} 
+	 * parameter set
+	 */
 	public Harvester rdfPropList(List<String> list) {
 		if(!list.isEmpty()) {
 			hasList = true;
@@ -112,17 +148,43 @@ public class Harvester implements Runnable {
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #rdfListType} parameter
+	 * @param listType - a type ("black" or "white") for the {@link #rdfPropList}
+	 * in case it exists
+	 * @return the same {@link #Harvester} with the {@link #rdfListType} 
+	 * parameter set
+	 * @Observation A blacklist contains properties that should not be indexed 
+	 * with the data while a whitelist contains all the properties that should 
+	 * be indexed with the data.
+	 */
 	public Harvester rdfListType(String listType) {
 		if(listType.equals("white"))
 			this.rdfListType = true;
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #addLanguage} parameter.
+	 * @param rdfAddLanguage - a new value for the parameter 
+	 * @return the same {@link #Harvester} with the {@link #addLanguage} 
+	 * parameter set
+	 * @Observation When "addLanguage" is set on "true", all the languages 
+	 * of the String Literals will be included in the output of a new property, 
+	 * "language". 
+	 */
 	public Harvester rdfAddLanguage(Boolean rdfAddLanguage) {
 		this.addLanguage = rdfAddLanguage;
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #language} parameter. The default 
+	 * value is 'en"
+	 * @param rdfLanguage - new value for the parameter
+	 * @return the same {@link #Harvester} with the {@link #language} parameter
+	 * set
+	 */
 	public Harvester rdfLanguage(String rdfLanguage) {
 		this.language = rdfLanguage;
 		if(!this.language.isEmpty()){
@@ -133,6 +195,18 @@ public class Harvester implements Runnable {
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #normalizeProp} parameter. 
+	 * {@link #normalizeProp} contains pairs of property-replacement. The 
+	 * properties are replaced with the given values and if one resource has 
+	 * both properties their values are grouped in a list. 
+	 *  
+	 * @param normalizeProp - new value for the parameter
+	 * @return the same {@link #Harvester} with the {@link #normalizeProp} 
+	 * parameter set
+	 * @Observation In case there is at least one property, the 
+	 * {@link #willNormalizeProp} parameter is set to true.
+	 */
 	public Harvester rdfNormalizationProp(Map<String, String> normalizeProp) {
 		if(normalizeProp != null || !normalizeProp.isEmpty()) {
 			willNormalizeProp = true;
@@ -140,7 +214,19 @@ public class Harvester implements Runnable {
 		}
 		return this;
 	}
-
+	
+	/**
+	 * Sets the {@link #Harvester}'s {@link #normalizeObj} parameter. 
+	 * {@link #normalizeObj} contains pairs of object-replacement. Objects 
+	 * are replaced with given values no matter of the property whose value 
+	 * they represent.
+	 * 
+	 * @param normalizeObj - new value for the parameter
+	 * @return the same {@link #Harvester} with the {@link #normalizeObj} 
+	 * parameter set
+	 * @Observation In case there is at least one object to be normalized, the 
+	 * {@link #willNormalizeObj} parameter is set to true
+	 */
 	public Harvester rdfNormalizationObj(Map<String, String> normalizeObj) {
 		if(normalizeObj != null || !normalizeObj.isEmpty()) {
 			willNormalizeObj = true;
@@ -149,6 +235,15 @@ public class Harvester implements Runnable {
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #blackMap} parameter. A blackMap 
+	 * contains all the pairs property - list of objects that are not meant to 
+	 * be indexed.
+	 * 
+	 * @param blackMap - a new value for the parameter
+	 * @return the same {@link #Harvester} with the {@link #blackMap}
+	 * parameter set
+	 */
 	public Harvester rdfBlackMap(Map<String,Object> blackMap) {
 		if(blackMap != null || !blackMap.isEmpty()) {
 			hasBlackMap = true;
@@ -161,6 +256,15 @@ public class Harvester implements Runnable {
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #whiteMap} parameter.  A whiteMap 
+	 * contains all the pairs property - list of objects that are meant to be 
+	 * indexed.
+	 * 
+	 * @param whiteMap - a new value for the parameter
+	 * @return the same {@link #Harvester} with the {@link #whiteMap}
+	 * parameter set
+	 */
 	public Harvester rdfWhiteMap(Map<String,Object> whiteMap) {
 		if(whiteMap != null || !whiteMap.isEmpty()) {
 			hasWhiteMap = true;
@@ -173,6 +277,19 @@ public class Harvester implements Runnable {
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #uriDescriptionList} parameter. 
+	 * Whenever {@link #uriDescriptionList} is set, all the objects represented 
+	 * by URIs are replaced with the resource's label. The label is the first 
+	 * of the properties in the given list, for which the resource has an object.
+	 * 
+	 * @param uriList - a new value for the parameter
+	 * @return the same {@link #Harvester} with the {@link #uriDescriptionList}
+	 * parameter set
+	 * 
+	 * @Observation If the list is not empty, the {@link #toDescribeURIs} 
+	 * property is set to true
+	 */
 	public Harvester rdfURIDescription(String uriList) {
 		uriList = uriList.substring(1, uriList.length() - 1);
 		if(!uriList.isEmpty())
@@ -181,10 +298,21 @@ public class Harvester implements Runnable {
 		return this;
 	}
 
+	/**
+	 * Sets the {@link #Harvester}'s {@link #uriDescriptionList} parameter. 
+	 * When it is set to true  a new property is added to each resource: 
+	 * {@link http://www.w3.org/1999/02/22-rdf-syntax-ns#about}, having the value 
+	 * equal to the resource's URI.
+	 * 
+	 * @param rdfAddUriForResource - a new value for the parameter
+	 * @return the same {@link #Harvester} with the {@link #addUriForResource}
+	 * parameter set
+	 */
 	public Harvester rdfAddUriForResource(Boolean rdfAddUriForResource) {
 		this.addUriForResource = rdfAddUriForResource;
 		return this;
 	}
+	
 	
 	public Harvester rdfMultiList(List<String> list) {
 		if(!list.isEmpty()) {
@@ -276,6 +404,11 @@ public class Harvester implements Runnable {
 		}
 	}
 
+	
+	/**
+	 * Starts a harvester with predefined queries to synchronize with the 
+	 * changes from the SPARQL endpoint
+	 */
 	public void sync() {
 		rdfQuery = "PREFIX xsd:<http://www.w3.org/2001/XMLSchema#> " +
 			"SELECT ?resource WHERE { " +
@@ -370,6 +503,9 @@ public class Harvester implements Runnable {
 		}
 	}
 
+	/**
+	 * Starts the harvester for queries and/or URLs
+	 */
 	public void runIndexAll() {
 
 		logger.info(
@@ -502,10 +638,15 @@ public class Harvester implements Runnable {
 			logger.info("Harvesting url [{}]", url);
 
 			Model model = ModelFactory.createDefaultModel();
-			RDFDataMgr.read(model, url.trim(), RDFLanguages.RDFXML);
-			BulkRequestBuilder bulkRequest = client.prepareBulk();
+			try {
+				RDFDataMgr.read(model, url.trim(), RDFLanguages.RDFXML);
+				BulkRequestBuilder bulkRequest = client.prepareBulk();
 
-			addModelToES(model, bulkRequest);
+				addModelToES(model, bulkRequest);
+			}
+			catch (RiotException re) {
+				logger.info("Illegal xml character [{}]", re.toString());
+			}
 		}
 	}
 

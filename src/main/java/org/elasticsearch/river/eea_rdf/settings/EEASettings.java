@@ -1,5 +1,6 @@
 package org.elasticsearch.river.eea_rdf.settings;
 
+import java.util.regex.*;
 /**
  * 
  * @author iulia
@@ -37,5 +38,10 @@ public abstract class EEASettings {
 			.replace("\\'", "\'")
 			.replaceAll("\\\\x[a-fA-F0-9][a-fA-F0-9]", "_")
 			.replace("\\", "\\\\");
+	}
+	public static String removeIllegalXMLChar(String text) {
+		Pattern invalidXMLChars = Pattern.compile("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1F]");
+		invalidXMLChars.matcher(text).replaceAll("");
+		return text;
 	}
 }
