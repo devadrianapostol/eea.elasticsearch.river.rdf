@@ -345,8 +345,8 @@ replaced with given values no matter of the property whose value they represent.
  }'
  
  
-Multi_field support
-+++++++++++++++++++
+Multi field support
+===================
 
 'multiList' is a list of properties that will become ElasticSearch multi_fields with two fields: 
 'index' and 'sort'. This way a value can be used both in searching and sorting, since the first 
