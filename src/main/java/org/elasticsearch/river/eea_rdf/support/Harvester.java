@@ -707,6 +707,7 @@ public class Harvester implements Runnable {
 								}
 							} catch (Exception e) {}
 						}
+<<<<<<< HEAD
 						String shortValue = currValue.substring(
 												1,
 												currValue.length() - 1);
