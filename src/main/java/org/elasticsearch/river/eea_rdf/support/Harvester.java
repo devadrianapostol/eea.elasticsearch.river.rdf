@@ -52,6 +52,11 @@ import javax.xml.ws.http.HTTPException;
  *
  */
 public class Harvester implements Runnable {
+	private enum RDFQueryType {
+		DESCRIBE,
+		CONSTRUCT,
+		SELECT
+	}
 
 	private final ESLogger logger = Loggers.getLogger(Harvester.class);
 
@@ -61,7 +66,7 @@ public class Harvester implements Runnable {
 	private String rdfEndpoint;
 	private List<String> rdfQueries;
 	private String rdfQuery;
-	private int rdfQueryType;
+	private RDFQueryType rdfQueryType;
 	private List<String> rdfPropList;
 	private Boolean rdfListType = false;
 	private Boolean hasList = false;
@@ -115,15 +120,11 @@ public class Harvester implements Runnable {
 	/**
 	 * Sets the {@link #Harvester}'s {@link #rdfQuery} parameter
 	 * @param query - new list of queries
-	 * @return the same {@link #Harvester} with the {@link #rdfQuery} parameter
-	 * set
+	 * @return the same {@link #Harvester} with the {@link #rdfEndpoint}
+	 * parameter set
 	 */
 	public Harvester rdfQuery(List<String> query) {
-		if(!query.isEmpty()) {
-			this.rdfQueries = new ArrayList<String>(query);
-		} else {
-			rdfQueries = new ArrayList<String>(query);
-		}
+		rdfQueries = new ArrayList<String>(query);
 		return this;
 	}
 
@@ -134,12 +135,11 @@ public class Harvester implements Runnable {
 	 * parameter set
 	 */
 	public Harvester rdfQueryType(String queryType) {
-		if (queryType.equals("select"))
-			this.rdfQueryType = 1;
-		else if (queryType.equals("construct"))
-			this.rdfQueryType = 0;
-		else
-			this.rdfQueryType = 2;
+		try {
+			this.rdfQueryType = RDFQueryType.valueOf(queryType.toUpperCase());
+		} catch (IllegalArgumentException e) {
+			logger.error("Bad query type value: {}", queryType);
+		}
 		return this;
 	}
 
@@ -603,13 +603,13 @@ public class Harvester implements Runnable {
 		for (String uri : rdfUrls) {
 			//make query for each/all entries
 			switch(rdfQueryType) {
-				case 0: rdfQuery = "CONSTRUCT {<" + uri + "> ?p ?o WHERE { <" +
+				case CONSTRUCT: rdfQuery = "CONSTRUCT {<" + uri + "> ?p ?o WHERE { <" +
 								uri + "> ?p ?o}";
 								break;
-				case 1: rdfQuery = "SELECT <" + uri + "> as ?s ?p ?o WHERE { <" +
+				case SELECT: rdfQuery = "SELECT <" + uri + "> as ?s ?p ?o WHERE { <" +
 								uri + "> ?p ?o}";
 								break;
-				case 2: rdfQuery = "DESCRIBE <" + uri + ">";
+				case DESCRIBE: rdfQuery = "DESCRIBE <" + uri + ">";
 								break;
 				default: rdfQuery = "";
 								 break;
@@ -619,6 +619,8 @@ public class Harvester implements Runnable {
 				Query query = QueryFactory.create(rdfQuery);
 				QueryExecution qexec = QueryExecutionFactory.sparqlService(
 						rdfEndpoint, query);
+
+
 				try {
 					Model constructModel = ModelFactory.createDefaultModel();
 
@@ -631,9 +633,7 @@ public class Harvester implements Runnable {
 						DeleteResponse response = client.prepareDelete(
 							indexName,
 							typeName,
-							uri)
-        												.execute()
-        												.actionGet();
+							uri).execute().actionGet();
 					}
 
 					BulkRequestBuilder bulkRequest = client.prepareBulk();
@@ -657,7 +657,6 @@ public class Harvester implements Runnable {
 	 * Starts the harvester for queries and/or URLs
 	 */
 	public void runIndexAll() {
-
 		logger.info(
 				"Starting RDF harvester: endpoint [{}], queries [{}]," +
 				"URLs [{}], index name [{}], typeName [{}]",
@@ -668,7 +667,6 @@ public class Harvester implements Runnable {
 				logger.info("Ended harvest for endpoint [{}], queries [{}]," +
 						"URLs [{}], index name {}, type name {}",
 						rdfEndpoint, rdfQueries, rdfUrls, indexName, typeName);
-
 				return;
 			}
 
@@ -693,90 +691,86 @@ public class Harvester implements Runnable {
 	 * and harvests the results of the query. The query should only return triples,
 	 * named 's', 'p' and 'o'
 	 * @param qexec a SELECT query
+	 * @param model model to be filled in.
  	 */
-	private void harvestWithSelect(QueryExecution qexec) {
-		Model sparqlModel = ModelFactory.createDefaultModel();
-		Graph graph = sparqlModel.getGraph();
-		boolean got500 = true;
-
-		while(got500) {
+	private void execSelect(QueryExecution qexec, Model model) {
+		Graph graph = model.getGraph();
+		ResultSet results = qexec.execSelect();
+		while(results.hasNext()) {
+			QuerySolution sol = results.nextSolution();
+			/**
+			 * Each QuerySolution is a triple
+			 */
 			try {
-				ResultSet results = qexec.execSelect();
+				String subject = sol.getResource("s").toString();
+				String predicate = sol.getResource("p").toString();
+				String object = sol.get("o").toString();
 
-				while(results.hasNext()) {
-					QuerySolution sol = results.nextSolution();
-					/**
-				 	* Each QuerySolution is a triple
-				 	*/
-					try {
-						String subject = sol.getResource("s").toString();
-						String predicate = sol.getResource("p").toString();
-						String object = sol.get("o").toString();
+				graph.add(new Triple(
+						NodeFactory.createURI(subject),
+						NodeFactory.createURI(predicate),
+						NodeFactory.createLiteral(object)));
 
-						graph.add(new Triple(
-									NodeFactory.createURI(subject),
-									NodeFactory.createURI(predicate),
-									NodeFactory.createLiteral(object)));
-
-					} catch(NoSuchElementException nsee) {
-						logger.error("Could not index [{}]: Query result was" +
-								"not a triple. {}",	sol.toString(),
-								nsee.getLocalizedMessage());
-					}
-				}
-				got500 = false;
-			} catch(Exception e) {
-				String errorText = e.toString();
-				if(e instanceof QueryExceptionHTTP &&
-					errorText.contains("Internal Server Error")) {
-					got500 = true;
-					logger.warn(
-						"The endpoint replied with an internal error. Retrying");
-				} else {
-					got500 = false;
-					logger.error(
-						"Encountered a [{}] when quering the endpoint",
-						errorText);
-				}
-			} finally { qexec.close(); }
+			} catch(NoSuchElementException nsee) {
+				logger.error(
+						"Could not index [{}]: Query result was not a triple. {}",
+						sol.toString(),
+						nsee.getLocalizedMessage());
+			}
 		}
-
-		BulkRequestBuilder bulkRequest = client.prepareBulk();
-		addModelToES(sparqlModel, bulkRequest);
 	}
 
 	/**
 	 * Queries the {@link #rdfEndpoint(String)} with the {@link #rdfQuery(String)}
-	 * and harvests the results of the query.
-	 * @param qexec a CONSTRUCT query
+	 * and fills in the model.
+	 * @param qexec a query
+	 * @param model model to be filled in
 	 */
-	private void harvestWithConstruct(QueryExecution qexec) {
-		Model sparqlModel = ModelFactory.createDefaultModel();
-		boolean got500 = true;
-
-		while(got500) {
-			try {
-				qexec.execConstruct(sparqlModel);
-				got500 = false;
-			} catch (Exception e) {
-				String errorText = e.toString();
-				if(e instanceof QueryExceptionHTTP &&
-					errorText.contains("Internal Server Error")) {
-					got500 = true;
-					logger.warn(
-						"The endpoint replied with an internal error. Retrying");
-				} else {
-					got500 = false;
-					logger.error(
-						"Encountered a [{}] when quering the endpoint",
-						errorText);
-				}
-			}
-
-			BulkRequestBuilder bulkRequest = client.prepareBulk();
-			addModelToES(sparqlModel, bulkRequest);
+	private void execQuery(QueryExecution qexec, Model model) {
+		switch (rdfQueryType) {
+			case DESCRIBE:
+				qexec.execDescribe(model);
+				break;
+			case CONSTRUCT:
+				qexec.execConstruct(model);
+				break;
+			case SELECT:
+				execSelect(qexec, model);
+				break;
 		}
-		qexec.close();
+	}
+
+	/**
+	 * Retries querying {@link #rdfEndpoint(String)} with the {@link #rdfQuery(String)}
+	 * and harvests the results of the query.
+	 * @param qexec a query
+	 */
+	private void harvest(QueryExecution qexec) {
+		Model sparqlModel = ModelFactory.createDefaultModel();
+		boolean tryExec = true;
+
+		while (tryExec) {
+			try {
+				execQuery(qexec, sparqlModel);
+			} catch (QueryExceptionHTTP httpE) {
+				if (httpE.toString().contains("Internal Server Error")) {
+					logger.warn("The endpoint replied with an internal error. Retrying");
+					continue;
+				} else {
+					throw httpE;
+				}
+			} catch (Exception e) {
+				logger.error("Encountered a [{}] when quering the endpoint",
+							 e.toString());
+				// Quit harvesing on this type of error.
+				return;
+			} finally {
+				qexec.close();
+			}
+			tryExec = false;
+		}
+		BulkRequestBuilder bulkRequest = client.prepareBulk();
+		addModelToES(sparqlModel, bulkRequest);
 	}
 
 	/**
@@ -800,16 +794,7 @@ public class Harvester implements Runnable {
 				qexec = QueryExecutionFactory.sparqlService(
 						rdfEndpoint,
 						query);
-				switch(rdfQueryType) {
-					case 0: harvestWithConstruct(qexec);
-								break;
-					case 1: harvestWithSelect(qexec);
-								break;
-					case 2: //TODO implement harvestWithDescribe
-								break;
-					default: break;
-				}
-
+				harvest(qexec);
 			} catch (QueryParseException qpe) {
 				logger.error(
 						"Could not parse [{}]. Please provide a relevant query. {}",
